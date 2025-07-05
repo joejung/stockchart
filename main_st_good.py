@@ -19,15 +19,16 @@ st.sidebar.header("📈 Plot Controls")
 # Option to show 200-day moving average
 show_ma = st.sidebar.checkbox("Show 200-Day Moving Average", value=False)
 
-# Start Year Input
+# Year Range Input (single control)
 current_year = pd.Timestamp.now().year
-start_year = st.sidebar.slider(
-    "Select Start Year",
+year_range = st.sidebar.slider(
+    "Select Year Range",
     min_value=1990,
     max_value=current_year,
-    value=current_year - 5,
+    value=(current_year - 5, current_year),
     step=1
 )
+start_year, end_year = year_range
 
 # Time Interval Selection
 interval_options = {
@@ -100,6 +101,7 @@ def fetch_and_resample_data(symbol, start_date, interval_name):
 
 # --- Main Plotting Logic ---
 start_date_str = f"{start_year}-01-01"
+end_date_str = f"{end_year}-12-31"
 
 # Fetch data for GOOGL
 df_googl = fetch_and_resample_data("GOOGL", start_date_str, selected_interval_name)
@@ -116,6 +118,10 @@ if not df_nvda.empty:
     combined_df = pd.concat([combined_df, df_nvda])
 if not df_tsla.empty:
     combined_df = pd.concat([combined_df, df_tsla])
+
+# Filter combined_df by end date
+if not combined_df.empty:
+    combined_df = combined_df[(combined_df.index >= start_date_str) & (combined_df.index <= end_date_str)]
 
 # Calculate 200-day moving average if option is selected and interval is daily
 if show_ma and selected_interval_name == "Day" and not combined_df.empty:
