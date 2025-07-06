@@ -45,6 +45,9 @@ selected_interval_name = st.sidebar.selectbox(
 yfinance_interval_code = interval_options[selected_interval_name] # Interval for yfinance fetch
 # Resampling code will be based on selected_interval_name, as yfinance's '3mo' is not quarter-end specific
 
+# Option to show profit instead of price
+show_profit = st.sidebar.checkbox("Show Profit Instead of Price", value=False)
+
 # --- Data Fetching and Resampling Function ---
 @st.cache_data(ttl=3600) # Cache data for 1 hour to avoid re-downloading on every rerun
 def fetch_and_resample_data(symbol, start_date, interval_name):
@@ -123,6 +126,19 @@ if not df_tsla.empty:
 if not combined_df.empty:
     combined_df = combined_df[(combined_df.index >= start_date_str) & (combined_df.index <= end_date_str)]
 
+    if show_profit:
+        # Find intersection of dates for all symbols
+        symbols = combined_df['Symbol'].unique()
+        date_sets = [set(combined_df[combined_df['Symbol'] == symbol].index) for symbol in symbols]
+        common_dates = sorted(set.intersection(*date_sets)) if date_sets else []
+        # Filter to only common dates
+        combined_df = combined_df[combined_df.index.isin(common_dates)]
+        # Calculate profit percentage for each symbol, starting from the same date
+        for symbol in symbols:
+            symbol_mask = (combined_df['Symbol'] == symbol)
+            first_price = combined_df.loc[symbol_mask, 'Close'].iloc[0]
+            combined_df.loc[symbol_mask, 'Profit'] = (combined_df.loc[symbol_mask, 'Close'] - first_price) / first_price * 100
+
 # Calculate 200-day moving average if option is selected and interval is daily
 if show_ma and selected_interval_name == "Day" and not combined_df.empty:
     for symbol in ["GOOGL", "NVDA", "TSLA"]:
@@ -131,21 +147,23 @@ if show_ma and selected_interval_name == "Day" and not combined_df.empty:
 
 if not combined_df.empty:
     # Use Plotly Express for plotting
+    plot_y = 'Profit' if show_profit else 'Close'
+    y_label = 'Profit (%)' if show_profit else 'Close Price (USD)'
     fig = px.line(
         combined_df.reset_index(), # Reset index to make 'Date' a column for Plotly
         x='Date',
-        y='Close',
+        y=plot_y,
         color='Symbol',
         line_dash='Symbol', # Optional: different dash types for symbols
-        title=f'GOOGL vs NVDA vs TSLA Stock Price ({selected_interval_name}ly) from {start_year}',
+        title=f'GOOGL vs NVDA vs TSLA Stock {"Profit" if show_profit else "Price"} ({selected_interval_name}ly) from {start_year}',
         labels={
             "Date": "Date",
-            "Close": "Close Price (USD)"
+            plot_y: y_label
         },
         hover_data={
             "Date": "|%Y-%m-%d", # Format date on hover
-            "Close": ":$.2f",    # Format price on hover
-            "Symbol": True       # Show symbol on hover
+            plot_y: ":.2f" if show_profit else ":$.2f",
+            "Symbol": True
         }
     )
 
@@ -176,7 +194,7 @@ if not combined_df.empty:
         hovermode="x unified", # Shows all traces' values at a given x-coordinate
         legend_title_text='Stock',
         xaxis_title="Date",
-        yaxis_title="Close Price (USD)",
+        yaxis_title=y_label,
         xaxis_tickformat='%Y-%m-%d', # Ensure date format on x-axis
         # Improve interactivity
         hoverlabel=dict(
